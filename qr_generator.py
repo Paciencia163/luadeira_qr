@@ -37,7 +37,10 @@ if st.button("Gerar QR Code"):
     qr = qrcode.QRCode(box_size=10, border=4)
     qr.add_data(qr_url)
     qr.make(fit=True)
-    img = qr.make_image(fill_color="black", back_color="white")
+    img_qr = qr.make_image(fill_color="black", back_color="white")
+
+    # Converte para PIL.Image.Image (RGB)
+    img = img_qr.convert("RGB")
 
     # Mostrar QR na tela
     st.image(img, caption="QR Code Gerado", use_container_width=False)
