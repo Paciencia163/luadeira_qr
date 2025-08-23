@@ -5,176 +5,146 @@ from datetime import datetime
 import altair as alt
 from io import BytesIO
 
-FILE = "qr_data.xlsx"
+# Arquivos locais
 LOG_FILE = "scans_log.xlsx"
 
-# Inicializa arquivos se não existirem
-if not os.path.exists(FILE):
-    df = pd.DataFrame([{"ID": 1, "URL": "", "Scans": 0}])
-    df.to_excel(FILE, index=False)
-
+# Inicializa arquivo de log
 if not os.path.exists(LOG_FILE):
-    log_df = pd.DataFrame(columns=["QR_ID", "DataHora"])
+    log_df = pd.DataFrame(columns=["DataHora"])
     log_df.to_excel(LOG_FILE, index=False)
 
-st.set_page_config(page_title="Luadeira Digital - Evento", page_icon="🎉", layout="wide")
+st.set_page_config(
+    page_title="Controle de Entrada - Luadeira Digital",
+    page_icon="🎟️",
+    layout="wide"
+)
 
 # --- SESSION STATE ---
 if "logado" not in st.session_state:
     st.session_state["logado"] = False
 
 # --- SIDEBAR LOGIN ---
-st.sidebar.title("🔐 Área Administrativa")
-usuario = st.sidebar.text_input("Usuário")
-senha = st.sidebar.text_input("Senha", type="password")
-if st.sidebar.button("Entrar"):
-    if usuario == "admin" and senha == "1234":
-        st.session_state["logado"] = True
-        st.sidebar.success("✅ Logado com sucesso!")
+with st.sidebar:
+    st.title("🔐 Área Administrativa")
+    usuario = st.text_input("Usuário")
+    senha = st.text_input("Senha", type="password")
+    if st.button("Entrar"):
+        if usuario == "admin" and senha == "1234":
+            st.session_state["logado"] = True
+            st.success("✅ Logado com sucesso!")
+            st.rerun()
+        else:
+            st.error("❌ Credenciais inválidas")
+
+    if st.button("Sair"):
+        st.session_state["logado"] = False
         st.rerun()
-    else:
-        st.sidebar.error("❌ Credenciais inválidas")
 
-if st.sidebar.button("Sair"):
-    st.session_state["logado"] = False
-    st.rerun()
-
-# --- PÁGINA INICIAL (todos os usuários) ---
+# --- PÁGINA INICIAL (visível a todos) ---
 st.image("logo.png", use_container_width=True)
 
 st.title("🎉 Bem-vindo ao Evento da **Luadeira Digital**")
 st.markdown(
     """
-    🌟 **Uma experiência inesquecível!**  
-    Estamos felizes em recebê-lo neste grande momento de celebração, tecnologia e conexões.  
-    Cada leitura do QR Code é um passo rumo a um evento mais interativo e digital.  
-    Aproveite cada instante! 🚀✨
+    🌟 **Um evento que conecta pessoas e experiências!**  
+    Sua presença é muito importante para nós.  
+    Obrigado por participar e fazer parte deste grande momento! 🚀✨
     """
 )
 
-# --- CAPTURA DO QR ---
+# --- CAPTURA DO SCAN ---
 query_params = st.query_params
-qr_id = int(query_params.get("qr_id", [1])[0])  # padrão = 1
+scanned = "qr_id" in query_params  # se o QR foi lido, terá esse parâmetro
 
-df = pd.read_excel(FILE)
+# Carregar log
 log_df = pd.read_excel(LOG_FILE)
 
-# Se não existe esse QR ainda no Excel, cria
-if qr_id not in df["ID"].values:
-    df = pd.concat([df, pd.DataFrame([{"ID": qr_id, "URL": "", "Scans": 0}])], ignore_index=True)
-    df.to_excel(FILE, index=False)
+if scanned:
+    # Registra entrada
+    novo_log = pd.DataFrame([{"DataHora": datetime.now()}])
+    log_df = pd.concat([log_df, novo_log], ignore_index=True)
+    log_df.to_excel(LOG_FILE, index=False)
 
-# Normaliza coluna Scans
-df["Scans"] = df["Scans"].fillna(0).astype(int)
+    st.success("✅ Presença registrada com sucesso! Bem-vindo ao evento 🙌")
 
-# Incrementa leitura do QR (todos contam, mesmo sem login)
-df.loc[df["ID"] == qr_id, "Scans"] += 1
-df.to_excel(FILE, index=False)
-
-# Salva log
-novo_log = pd.DataFrame([{"QR_ID": qr_id, "DataHora": datetime.now()}])
-log_df = pd.concat([log_df, novo_log], ignore_index=True)
-log_df.to_excel(LOG_FILE, index=False)
-
-st.success(f"✅ QR Code **{qr_id}** registrado com sucesso! Obrigado por participar! 🙌")
-
-# --- ÁREA ADMINISTRATIVA (somente se logado) ---
+# --- ÁREA ADMINISTRATIVA ---
 if st.session_state["logado"]:
     st.markdown("---")
-    st.header("📊 Estatísticas Administrativas")
+    st.header("📊 Painel Administrativo - Controle de Entrada")
 
-    # 🔹 KPIs principais
-    total_scans = int(df["Scans"].sum())
-    total_qrs = df["ID"].nunique()
-    scans_unicos = len(log_df["QR_ID"].unique())
+    # Processar dados
+    log_df["DataHora"] = pd.to_datetime(log_df["DataHora"], errors="coerce")
 
-    kpi1, kpi2, kpi3 = st.columns(3)
-    kpi1.metric("📌 Total de Leituras", total_scans)
-    kpi2.metric("🔑 QR Codes Ativos", total_qrs)
-    kpi3.metric("👥 Scans Únicos", scans_unicos)
+    total_entradas = len(log_df)
+    hoje = datetime.now().date()
+    entradas_hoje = len(log_df[log_df["DataHora"].dt.date == hoje])
+    ultima_entrada = log_df["DataHora"].max() if not log_df.empty else "N/A"
+    pico_horario = (
+        log_df["DataHora"].dt.hour.value_counts().idxmax()
+        if not log_df.empty else "N/A"
+    )
 
-    # 🔹 Estatísticas por QR
-    st.subheader("📈 Resumo por QR Code")
-    resumo = log_df.groupby("QR_ID").agg(
-        Total_Leituras=("QR_ID", "count"),
-        Primeira_Leitura=("DataHora", "min"),
-        Ultima_Leitura=("DataHora", "max")
-    ).reset_index()
+    # KPIs principais
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("👥 Total de Pessoas no Evento", total_entradas)
+    col2.metric("📅 Entradas Hoje", entradas_hoje)
+    col3.metric("⏰ Última Entrada", str(ultima_entrada))
+    col4.metric("🔥 Pico de Acessos (hora)", str(pico_horario))
 
-    st.dataframe(resumo, use_container_width=True)
+    # Gráficos
+    st.subheader("📈 Fluxo de Entrada")
 
-    # 🔹 Log detalhado de todas as leituras
-    st.subheader("📜 Log Completo de Leituras")
-    st.dataframe(log_df.tail(50), use_container_width=True)  # mostra últimas 50 entradas
+    tabs = st.tabs(["📅 Por Dia", "⏰ Por Hora", "⏳ Timeline Completa"])
 
-    # Exportar log
+    with tabs[0]:
+        scans_por_dia = log_df.groupby(log_df["DataHora"].dt.date).size().reset_index(name="Entradas")
+        chart_dia = alt.Chart(scans_por_dia).mark_bar(color="#4E79A7").encode(
+            x="DataHora:T", y="Entradas:Q", tooltip=["DataHora", "Entradas"]
+        ).properties(width=700, height=300)
+        st.altair_chart(chart_dia, use_container_width=True)
+
+    with tabs[1]:
+        scans_por_hora = log_df.groupby(log_df["DataHora"].dt.hour).size().reset_index(name="Entradas")
+        chart_hora = alt.Chart(scans_por_hora).mark_bar(color="#F28E2B").encode(
+            x="DataHora:O", y="Entradas:Q", tooltip=["DataHora", "Entradas"]
+        ).properties(width=700, height=300)
+        st.altair_chart(chart_hora, use_container_width=True)
+
+    with tabs[2]:
+        timeline = log_df.copy()
+        timeline["Contagem"] = range(1, len(timeline) + 1)
+        chart_timeline = alt.Chart(timeline).mark_line(point=True, color="#59A14F").encode(
+            x="DataHora:T", y="Contagem:Q", tooltip=["DataHora", "Contagem"]
+        ).properties(width=700, height=300)
+        st.altair_chart(chart_timeline, use_container_width=True)
+
+    # Log completo
+    st.subheader("📜 Últimas Leituras Registradas")
+    st.dataframe(log_df.tail(20), use_container_width=True)
+
+    # Download
     output = BytesIO()
     log_df.to_excel(output, index=False, engine="openpyxl")
     output.seek(0)
     st.download_button(
-        "📥 Baixar Log Completo em Excel",
+        "📥 Baixar Log em Excel",
         data=output,
-        file_name="log_leituras.xlsx",
+        file_name="log_entradas.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
 
-    # 🔹 Gráficos
-    st.subheader("📊 Gráficos Interativos")
-    if not log_df.empty:
-        log_df["DataHora"] = pd.to_datetime(log_df["DataHora"], errors="coerce")
-
-        tabs = st.tabs(["📅 Por Dia", "⏰ Por Hora", "🗓️ Por Mês"])
-
-        # --- Scans por Dia ---
-        with tabs[0]:
-            scans_por_dia = log_df.groupby(log_df["DataHora"].dt.date).size().reset_index(name="Scans")
-            chart_dia = alt.Chart(scans_por_dia).mark_line(point=True, color="#4E79A7").encode(
-                x=alt.X("DataHora:T", title="Dia"),
-                y=alt.Y("Scans:Q", title="Total de Scans"),
-                tooltip=["DataHora", "Scans"]
-            ).properties(width=700, height=300)
-            st.altair_chart(chart_dia, use_container_width=True)
-
-        # --- Scans por Hora ---
-        with tabs[1]:
-            scans_por_hora = log_df.groupby(log_df["DataHora"].dt.hour).size().reset_index(name="Scans")
-            chart_hora = alt.Chart(scans_por_hora).mark_bar(color="#F28E2B").encode(
-                x=alt.X("DataHora:O", title="Hora do Dia"),
-                y=alt.Y("Scans:Q", title="Total de Scans"),
-                tooltip=["DataHora", "Scans"]
-            ).properties(width=700, height=300)
-            st.altair_chart(chart_hora, use_container_width=True)
-
-        # --- Scans por Mês ---
-        with tabs[2]:
-            scans_por_mes = log_df.groupby(log_df["DataHora"].dt.to_period("M")).size().reset_index(name="Scans")
-            scans_por_mes["DataHora"] = scans_por_mes["DataHora"].astype(str)
-            chart_mes = alt.Chart(scans_por_mes).mark_bar(color="#59A14F").encode(
-                x=alt.X("DataHora:O", title="Mês"),
-                y=alt.Y("Scans:Q", title="Total de Scans"),
-                tooltip=["DataHora", "Scans"]
-            ).properties(width=700, height=300)
-            st.altair_chart(chart_mes, use_container_width=True)
-    else:
-        st.info("Ainda não há leituras registradas para gerar gráficos.")
-
     st.markdown("---")
     st.subheader("⚙️ Controles Administrativos")
+    colA, colB = st.columns(2)
 
-    col1, col2 = st.columns(2)
-
-    # Resetar apenas a contagem
-    with col1:
-        if st.button("🔄 Resetar Apenas Contagem"):
-            df["Scans"] = 0
-            df.to_excel(FILE, index=False)
-            st.warning("📉 A contagem foi resetada, mas os logs foram mantidos.")
-
-    # Resetar tudo (contagem + log)
-    with col2:
-        if st.button("🗑️ Limpar Log e Resetar Contagem"):
-            log_df = pd.DataFrame(columns=["QR_ID", "DataHora"])
+    with colA:
+        if st.button("🔄 Resetar Contagem do Dia (manter histórico)"):
+            log_df = log_df[log_df["DataHora"].dt.date != hoje]
             log_df.to_excel(LOG_FILE, index=False)
-            df["Scans"] = 0
-            df.to_excel(FILE, index=False)
-            st.error("🚨 Logs apagados e contagem resetada.")
+            st.warning("📉 Contagem de hoje resetada. Histórico preservado.")
+
+    with colB:
+        if st.button("🗑️ Resetar Tudo (apaga log)"):
+            log_df = pd.DataFrame(columns=["DataHora"])
+            log_df.to_excel(LOG_FILE, index=False)
+            st.error("🚨 Todo histórico apagado e contagem resetada.")
