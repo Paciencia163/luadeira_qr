@@ -3,6 +3,7 @@ import pandas as pd
 import os
 from datetime import datetime
 import altair as alt
+from io import BytesIO
 
 FILE = "qr_data.xlsx"
 LOG_FILE = "scans_log.xlsx"
@@ -107,9 +108,12 @@ if st.session_state["logado"]:
     st.dataframe(log_df.tail(50), use_container_width=True)  # mostra últimas 50 entradas
 
     # Exportar log
+    output = BytesIO()
+    log_df.to_excel(output, index=False, engine="openpyxl")
+    output.seek(0)
     st.download_button(
         "📥 Baixar Log Completo em Excel",
-        data=log_df.to_excel(index=False, engine="openpyxl"),
+        data=output,
         file_name="log_leituras.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
@@ -154,10 +158,23 @@ if st.session_state["logado"]:
     else:
         st.info("Ainda não há leituras registradas para gerar gráficos.")
 
-    # 🔹 Botão para limpar apenas os logs
-    if st.button("🗑️ Limpar Log de Leituras"):
-        log_df = pd.DataFrame(columns=["QR_ID", "DataHora"])
-        log_df.to_excel(LOG_FILE, index=False)
-        df["Scans"] = 0
-        df.to_excel(FILE, index=False)
-        st.warning("📉 Todos os logs de leitura foram apagados e os contadores resetados.")
+    st.markdown("---")
+    st.subheader("⚙️ Controles Administrativos")
+
+    col1, col2 = st.columns(2)
+
+    # Resetar apenas a contagem
+    with col1:
+        if st.button("🔄 Resetar Apenas Contagem"):
+            df["Scans"] = 0
+            df.to_excel(FILE, index=False)
+            st.warning("📉 A contagem foi resetada, mas os logs foram mantidos.")
+
+    # Resetar tudo (contagem + log)
+    with col2:
+        if st.button("🗑️ Limpar Log e Resetar Contagem"):
+            log_df = pd.DataFrame(columns=["QR_ID", "DataHora"])
+            log_df.to_excel(LOG_FILE, index=False)
+            df["Scans"] = 0
+            df.to_excel(FILE, index=False)
+            st.error("🚨 Logs apagados e contagem resetada.")
