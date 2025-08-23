@@ -3,12 +3,11 @@ import pandas as pd
 import os
 from datetime import datetime
 import altair as alt
-from PIL import Image
 
 FILE = "qr_data.xlsx"
 LOG_FILE = "scans_log.xlsx"
 
-# Inicializa arquivos, se não existirem
+# Inicializa arquivos se não existirem
 if not os.path.exists(FILE):
     df = pd.DataFrame([{"ID": 1, "URL": "", "Scans": 0}])
     df.to_excel(FILE, index=False)
@@ -39,7 +38,7 @@ if st.sidebar.button("Sair"):
     st.session_state["logado"] = False
     st.rerun()
 
-# --- PÁGINA INICIAL (visível a todos) ---
+# --- PÁGINA INICIAL (todos os usuários) ---
 st.image("logo.png", use_container_width=True)
 
 st.title("🎉 Bem-vindo ao Evento da **Luadeira Digital**")
@@ -67,7 +66,7 @@ if qr_id not in df["ID"].values:
 # Normaliza coluna Scans
 df["Scans"] = df["Scans"].fillna(0).astype(int)
 
-# Incrementa leitura do QR (todos que escaneiam contam, mesmo sem login)
+# Incrementa leitura do QR (todos contam, mesmo sem login)
 df.loc[df["ID"] == qr_id, "Scans"] += 1
 df.to_excel(FILE, index=False)
 
@@ -83,13 +82,40 @@ if st.session_state["logado"]:
     st.markdown("---")
     st.header("📊 Estatísticas Administrativas")
 
-    # Mostrar tabela de contagem
-    st.subheader("📈 Total de Leituras por QR")
-    st.dataframe(df)
+    # 🔹 KPIs principais
+    total_scans = int(df["Scans"].sum())
+    total_qrs = df["ID"].nunique()
+    scans_unicos = len(log_df["QR_ID"].unique())
 
-    # Estatísticas com gráficos
-    st.subheader("📊 Estatísticas de Leitura")
+    kpi1, kpi2, kpi3 = st.columns(3)
+    kpi1.metric("📌 Total de Leituras", total_scans)
+    kpi2.metric("🔑 QR Codes Ativos", total_qrs)
+    kpi3.metric("👥 Scans Únicos", scans_unicos)
 
+    # 🔹 Estatísticas por QR
+    st.subheader("📈 Resumo por QR Code")
+    resumo = log_df.groupby("QR_ID").agg(
+        Total_Leituras=("QR_ID", "count"),
+        Primeira_Leitura=("DataHora", "min"),
+        Ultima_Leitura=("DataHora", "max")
+    ).reset_index()
+
+    st.dataframe(resumo, use_container_width=True)
+
+    # 🔹 Log detalhado de todas as leituras
+    st.subheader("📜 Log Completo de Leituras")
+    st.dataframe(log_df.tail(50), use_container_width=True)  # mostra últimas 50 entradas
+
+    # Exportar log
+    st.download_button(
+        "📥 Baixar Log Completo em Excel",
+        data=log_df.to_excel(index=False, engine="openpyxl"),
+        file_name="log_leituras.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+
+    # 🔹 Gráficos
+    st.subheader("📊 Gráficos Interativos")
     if not log_df.empty:
         log_df["DataHora"] = pd.to_datetime(log_df["DataHora"], errors="coerce")
 
@@ -98,40 +124,5 @@ if st.session_state["logado"]:
         # --- Scans por Dia ---
         with tabs[0]:
             scans_por_dia = log_df.groupby(log_df["DataHora"].dt.date).size().reset_index(name="Scans")
-            chart_dia = alt.Chart(scans_por_dia).mark_bar(color="#4E79A7").encode(
-                x=alt.X("DataHora:T", title="Dia"),
-                y=alt.Y("Scans:Q", title="Total de Scans"),
-                tooltip=["DataHora", "Scans"]
-            ).properties(width=700, height=300)
-            st.altair_chart(chart_dia, use_container_width=True)
-
-        # --- Scans por Hora ---
-        with tabs[1]:
-            scans_por_hora = log_df.groupby(log_df["DataHora"].dt.hour).size().reset_index(name="Scans")
-            chart_hora = alt.Chart(scans_por_hora).mark_bar(color="#F28E2B").encode(
-                x=alt.X("DataHora:O", title="Hora do Dia"),
-                y=alt.Y("Scans:Q", title="Total de Scans"),
-                tooltip=["DataHora", "Scans"]
-            ).properties(width=700, height=300)
-            st.altair_chart(chart_hora, use_container_width=True)
-
-        # --- Scans por Mês ---
-        with tabs[2]:
-            scans_por_mes = log_df.groupby(log_df["DataHora"].dt.to_period("M")).size().reset_index(name="Scans")
-            scans_por_mes["DataHora"] = scans_por_mes["DataHora"].astype(str)
-            chart_mes = alt.Chart(scans_por_mes).mark_bar(color="#59A14F").encode(
-                x=alt.X("DataHora:O", title="Mês"),
-                y=alt.Y("Scans:Q", title="Total de Scans"),
-                tooltip=["DataHora", "Scans"]
-            ).properties(width=700, height=300)
-            st.altair_chart(chart_mes, use_container_width=True)
-    else:
-        st.info("Ainda não há leituras registradas para gerar gráficos.")
-
-    # Botão para limpar apenas os logs (não remove QR)
-    if st.button("🗑️ Limpar Log de Leituras"):
-        log_df = pd.DataFrame(columns=["QR_ID", "DataHora"])
-        log_df.to_excel(LOG_FILE, index=False)
-        df["Scans"] = 0
-        df.to_excel(FILE, index=False)
-        st.warning("📉 Todos os logs de leitura foram apagados e os contadores resetados.")
+            chart_dia = alt.Chart(scans_por_dia).mark_line(point=True, color="#4E79A7").encode(
+                x=alt.X
