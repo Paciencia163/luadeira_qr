@@ -1,51 +1,56 @@
 import streamlit as st
+import pandas as pd
 import qrcode
 from io import BytesIO
 from PIL import Image
-import pandas as pd
 import os
 
 FILE = "qr_data.xlsx"
-LOG_FILE = "scans_log.xlsx"
 
-# Inicializa arquivos de dados
+# Cria arquivo inicial, se não existir
 if not os.path.exists(FILE):
     df = pd.DataFrame([{"ID": 1, "URL": "", "Scans": 0}])
     df.to_excel(FILE, index=False)
 
-if not os.path.exists(LOG_FILE):
-    log_df = pd.DataFrame(columns=["ID", "DataHora"])
-    log_df.to_excel(LOG_FILE, index=False)
+st.set_page_config(page_title="Gerador de QR - Luadeira Digital", page_icon="🎟️", layout="wide")
 
+st.title("🎟️ Gerador de QR Code - Luadeira Digital")
+
+# URL base do deploy no Streamlit Cloud
+APP_URL = "https://luadeiraqr-eventos.streamlit.app"
+
+# Carregar dados
 df = pd.read_excel(FILE)
 
-# Corrige possíveis NaN na contagem
-if "Scans" not in df.columns or df.empty:
-    df = pd.DataFrame([{"ID": 1, "URL": "", "Scans": 0}])
+# Campo para configurar URL de destino
+url_destino = st.text_input("🔗 Insira a URL de destino do QR Code:", value=df.loc[0, "URL"])
+
+if st.button("Gerar QR Code"):
+    # Atualiza URL no Excel
+    df.loc[0, "URL"] = url_destino
     df.to_excel(FILE, index=False)
 
-df["Scans"] = df["Scans"].fillna(0).astype(int)
+    # Monta URL completa com base pública
+    qr_url = f"{APP_URL}/?qr_id=1"
 
-st.set_page_config(page_title="Gerador de QR", page_icon="🛠️")
-st.title("🛠️ Gerador de QR Code")
+    # Gerar QR
+    qr = qrcode.QRCode(box_size=10, border=4)
+    qr.add_data(qr_url)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="black", back_color="white")
 
-app2_base_url = st.text_input("URL do Leitor (App 2):", "http://localhost:8502")
-url = st.text_input("Digite a URL final para redirecionar:")
+    # Mostrar QR na tela
+    st.image(img, caption="QR Code Gerado", use_container_width=False)
 
-if st.button("Gerar/Atualizar QR Code") and url:
-    df.loc[0, "URL"] = url
-    df.to_excel(FILE, index=False)
-
-    redirect_url = f"{app2_base_url}/?qr_id=1"
-
-    qr_img = qrcode.make(redirect_url)
+    # Permitir download do QR
     buf = BytesIO()
-    qr_img.save(buf, format="PNG")
+    img.save(buf, format="PNG")
+    st.download_button(
+        label="⬇️ Baixar QR Code",
+        data=buf.getvalue(),
+        file_name="qr_code.png",
+        mime="image/png"
+    )
 
-    st.image(Image.open(buf), caption="QR Code Único (ID 1)")
-    st.download_button("⬇️ Baixar QR Code", data=buf.getvalue(),
-                       file_name="qr_code_1.png", mime="image/png")
-
-    st.success("✅ QR Code atualizado!")
-    st.write(f"👉 Redireciona para: {url}")
-    st.write(f"🔗 Link de leitura: {redirect_url}")
+    st.success("✅ QR Code gerado com sucesso!")
+    st.write(f"📲 Quando escaneado, leva para: **{qr_url}**")
