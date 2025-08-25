@@ -43,7 +43,7 @@ with st.sidebar:
 # --- PÁGINA INICIAL (visível a todos) ---
 st.image("logo.png", use_container_width=True)
 
-st.title("🎉 Bem-vindo ao **EXPO CATOTA**")
+st.title("🎉 Bem-vindo a **EXPO CATOTA**")
 st.markdown(
     """
     🌟 **Um evento que conecta pessoas e experiências!**  
@@ -148,4 +148,5 @@ if st.session_state["logado"]:
             log_df = pd.DataFrame(columns=["DataHora"])
             log_df.to_excel(LOG_FILE, index=False)
             st.error("🚨 Todo histórico apagado e contagem resetada.")
+
 
